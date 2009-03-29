@@ -3,7 +3,7 @@
 require 'rubygems'
 require 'sinatra'
 require 'grit'
-require 'rdiscount'
+require 'redcloth'
 
 module GitWiki
   class << self
@@ -70,7 +70,7 @@ class Page
   end
 
   def to_html
-    Page.wikify(RDiscount.new(content).to_html)
+    Page.wikify(RedCloth.new(content).to_html)
   end
 
   def log
@@ -127,7 +127,7 @@ post '/pages/:page/edit' do
 end
 
 configure do
-  GitWiki.wiki_path = Dir.pwd
+  GitWiki.wiki_path = ARGV[0] || Dir.pwd
   GitWiki.root_page = 'index'
   GitWiki.extension = '.text'
   GitWiki.link_pattern = /\[\[(.*?)\]\]/
