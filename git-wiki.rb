@@ -13,23 +13,44 @@ module GitWiki
       @wiki_name = File.basename(path)
       @repository = Grit::Repo.new(path)
     end
+  end 
+end
+
+def all_files(repo, files=[], basedir="")
+  contents = Array === repo ? repo : repo.contents
+  folders, blobs = contents.partition { |e| Grit::Tree === e }
+  blobs.each { |e| files << "#{basedir}#{e.name}" }
+  folders.each do |f|
+    base = "#{basedir}#{f.name}/"
+    all_files(f.contents, files, base)
   end
+
+  return files
 end
 
 class Page
-  def self.find_all
-    GitWiki.repository.tree.contents.select do |blob|
-      blob.name =~ /#{GitWiki.extension}$/
-    end.collect do |blob|
-      new(blob)
+
+  def self.find_all(path=nil)
+    commit = GitWiki.repository.commit(GitWiki.repository.head.commit)
+    tree = GitWiki.repository.tree 
+    tree = tree / path if path
+
+    all_files(tree).map do |e| 
+      new(commit, "#{path}#{e}")
     end
+
+
+    #GitWiki.repository.tree.contents.select do |blob|
+    #  blob.name =~ /#{GitWiki.extension}$/
+    #end.collect do |blob|
+    #  new(blob)
+    #end
   end
 
   def self.find_or_create(name, rev=nil)
     path = name + GitWiki.extension
     commit = GitWiki.repository.commit(rev || GitWiki.repository.head.commit)
-    blob = commit.tree/path
-    new(blob || Grit::Blob.create(GitWiki.repository, :name => path))
+    new(commit, path)
   end
 
   def self.wikify(content)
@@ -37,16 +58,22 @@ class Page
   end
 
   def self.link(text)
-    page = find_or_create(text.gsub(/[^\w\s]/, '').split.join('-').downcase)
+    page = find_or_create(text.gsub(%r{[^\w\s/]}, '').split.join('-').downcase)
     "<a class='page #{page.css_class}' href='#{page.url}'>#{text}</a>"
   end
 
-  def initialize(blob)
-    @blob = blob
+  def initialize(commit_or_blob, path=nil)
+    unless path
+      @blob = commit_or_blob
+    else
+      @commit = commit_or_blob
+      @path   = path
+      @blob   = commit_or_blob.tree/path || Grit::Blob.create(GitWiki.repository, :name => path)
+    end
   end
 
   def to_s
-    @blob.name.sub(/#{GitWiki.extension}$/, '')
+    @path.sub(/#{GitWiki.extension}$/, '')
   end
 
   def url
@@ -83,9 +110,25 @@ class Page
   def save!(data, msg)
     msg = "web commit: #{self}" if msg.empty?
     Dir.chdir(GitWiki.repository.working_dir) do
-      File.open(@blob.name, 'w') {|f| f.puts(data.gsub("\r\n", "\n")) }
-      GitWiki.repository.add(@blob.name)
+      File.open(@path, 'w') {|f| f.puts(data.gsub("\r\n", "\n")) }
+      GitWiki.repository.add(@path)
       GitWiki.repository.commit_index(msg)
+    end
+  end
+
+  def tree_link
+    paths = @path.split("/")
+    if paths.length == 1
+      "<a href='/pages/#{@path[0..-6]}'>#{@path[0..-6]}</a>"
+    else
+      base = ""
+      out  = ""
+      paths[0..-2].each do |e|
+        out << " <a href='/pages/#{base}#{e}/'>#{e}</a> /"
+        base << "#{e}/"
+      end
+      out <<  " #{paths[-1][0..-6]}"
+      return out
     end
   end
 end
@@ -100,31 +143,26 @@ get '/pages/' do
   haml :list
 end
 
-get '/pages/:page/?' do
-  @page = Page.find_or_create(params[:page])
-  haml :show
+get %r{/pages/(.*)} do |page|
+  case page
+  when %r{(.*)/edit$}
+    @page = Page.find_or_create($1)
+    haml :edit
+  when %r{(.*/)$}
+    @pages = Page.find_all($1)
+    haml :list
+  else
+    @page = Page.find_or_create(page)
+    haml :show
+  end
 end
 
-get '/pages/:page/revisions/' do
-  @page = Page.find_or_create(params[:page])
-  haml :log
-end
-
-get '/pages/:page/revisions/:rev' do
-  @page = Page.find_or_create(params[:page], params[:rev])
-  haml :show
-end
-
-get '/pages/:page/edit' do
-  @page = Page.find_or_create(params[:page])
-  haml :edit
-end
-
-post '/pages/:page/edit' do
-  @page = Page.find_or_create(params[:page])
+post %r{/pages/(.+)/edit} do |page|
+  @page = Page.find_or_create(page)
   @page.save!(params[:content], params[:msg])
   redirect @page.url, 303
 end
+
 
 configure do
   GitWiki.wiki_path = ARGV[0] || Dir.pwd

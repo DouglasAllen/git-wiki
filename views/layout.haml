@@ -8,13 +8,11 @@
       %a.home{:href => '/'}>= GitWiki::wiki_name
       - if @page and @page.url != '/'
         \:
-        %a{:href => @page.url}= @page
+        = @page.tree_link
     %ul#actions
       - if @page
         %li
           %a.edit{:href => @page.edit_url}> edit
-        %li
-          %a.log{:href => @page.log_url}> log
       %li
         %a.list{:href => '/pages/'}> all
     #content= yield
