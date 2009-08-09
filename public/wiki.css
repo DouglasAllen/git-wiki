@@ -1,5 +1,7 @@
 body {
-  margin: 0;
+  margin-left: auto;
+  margin-right: auto;
+  width: 950px;
   padding: 0;
   color: #000000;
   background: #ffffff;

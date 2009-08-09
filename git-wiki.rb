@@ -134,8 +134,9 @@ class Page
 end
 
 get '/' do
-  @page = Page.find_or_create(GitWiki.root_page)
-  haml :show
+  redirect "/pages/"
+  #@page = Page.find_or_create(GitWiki.root_page)
+  #haml :show
 end
 
 get '/pages/' do
